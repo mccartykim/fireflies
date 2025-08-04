@@ -36,7 +36,12 @@ pub fn encode_int(n: Int) -> BitArray {
 }
 
 pub fn encode_list(items: List(Bencode)) -> BitArray {
-  todo
+  let encoded_interior =
+    list.map(items, encode)
+    |> bit_array.concat
+  bit_array.from_string("l")
+  |> bit_array.append(encoded_interior)
+  |> bit_array.append(bit_array.from_string("e"))
 }
 
 pub fn encode_dict(d: Dict(String, Bencode)) -> BitArray {
@@ -152,7 +157,28 @@ pub fn decode_int(input: BitArray) -> Result(#(Int, BitArray), String) {
 pub fn decode_list(
   input: BitArray,
 ) -> Result(#(List(Bencode), BitArray), String) {
-  todo
+  case input {
+    <<"l":utf8, rest:bits>> -> {
+      decode_list_rec(rest, [])
+    }
+    _ -> Error("Input doesn't start with 'l'")
+  }
+}
+
+fn decode_list_rec(
+  input: BitArray,
+  acc: List(Bencode),
+) -> Result(#(List(Bencode), BitArray), String) {
+  case input {
+    <<"e":utf8, rest:bits>> -> Ok(#(list.reverse(acc), rest))
+    <<>> -> Error("e not found")
+    _ -> {
+      case decode(input) {
+        Error(msg) -> Error("Error on list item: " <> msg)
+        Ok(#(item, rest)) -> decode_list_rec(rest, [item, ..acc])
+      }
+    }
+  }
 }
 
 pub fn decode_dict(
