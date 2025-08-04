@@ -15,7 +15,12 @@ pub type Bencode {
 }
 
 pub fn encode(value: Bencode) -> BitArray {
-  todo
+  case value {
+    BString(str) -> encode_string(str)
+    BList(lst) -> encode_list(lst)
+    BInt(int) -> encode_int(int)
+    BDict(dict) -> encode_dict(dict)
+  }
 }
 
 pub fn encode_string(bytes: BitArray) -> BitArray {
@@ -39,7 +44,27 @@ pub fn encode_dict(d: Dict(String, Bencode)) -> BitArray {
 }
 
 pub fn decode(input: BitArray) -> Result(#(Bencode, BitArray), String) {
-  todo
+  case input {
+    <<"i":utf8, _rest:bits>> -> {
+      use #(num, remainder) <- result.map(decode_int(input))
+      #(BInt(num), remainder)
+    }
+    <<"l":utf8, _rest:bits>> -> {
+      use #(lst, remainder) <- result.map(decode_list(input))
+      #(BList(lst), remainder)
+    }
+    <<"d":utf8, _rest:bits>> -> {
+      use #(dict, remainder) <- result.map(decode_dict(input))
+      #(BDict(dict), remainder)
+    }
+    <<digit:8, _rest:bits>> if digit >= 48 && digit <= 57 -> {
+      // ASCII '0'-'9' means it's a string
+      use #(str, remainder) <- result.map(decode_string(input))
+      #(BString(str), remainder)
+    }
+    <<>> -> Error("Empty input")
+    _ -> Error("Invalid bencode: unexpected byte")
+  }
 }
 
 fn slice_remainder(input: BitArray, start: Int) -> BitArray {
@@ -58,25 +83,27 @@ fn slice_remainder(input: BitArray, start: Int) -> BitArray {
 pub fn decode_string(input: BitArray) -> Result(#(BitArray, BitArray), String) {
   use colon_pos <- result.try(
     find_byte(input, 58, 0)
-    |> result.replace_error("Decode_string: No colon in str")
+    |> result.replace_error("Decode_string: No colon in str"),
   )
   use length_bytes <- result.try(
     bit_array.slice(input, 0, colon_pos)
-    |> result.replace_error("Failed to slice length prefix")
+    |> result.replace_error("Failed to slice length prefix"),
   )
   use length_str <- result.try(
     bit_array.to_string(length_bytes)
-    |> result.replace_error("Invalid UTF-8 in length")
+    |> result.replace_error("Invalid UTF-8 in length"),
   )
   use length <- result.try(
     int.parse(length_str)
-    |> result.replace_error("Failed to parse length: " <> length_str)
+    |> result.replace_error("Failed to parse length: " <> length_str),
   )
   use str_bytes <- result.try(
     bit_array.slice(input, colon_pos + 1, length)
-    |> result.replace_error("Failed to slice string of length " <> int.to_string(length))
+    |> result.replace_error(
+      "Failed to slice string of length " <> int.to_string(length),
+    ),
   )
-  
+
   let remainder = slice_remainder(input, colon_pos + 1 + length)
   Ok(#(str_bytes, remainder))
 }
@@ -98,22 +125,23 @@ pub fn decode_int(input: BitArray) -> Result(#(Int, BitArray), String) {
   case input {
     <<"i":utf8, rest:bits>> -> {
       use e_pos <- result.try(
-        find_byte(rest, 101, 0)  // 101 is ASCII 'e'
-        |> result.replace_error("No closing 'e' found for integer")
+        find_byte(rest, 101, 0)
+        // 101 is ASCII 'e'
+        |> result.replace_error("No closing 'e' found for integer"),
       )
       use num_bytes <- result.try(
         bit_array.slice(rest, 0, e_pos)
-        |> result.replace_error("Failed to slice number bytes")
+        |> result.replace_error("Failed to slice number bytes"),
       )
       use num_str <- result.try(
         bit_array.to_string(num_bytes)
-        |> result.replace_error("Invalid UTF-8 in integer")
+        |> result.replace_error("Invalid UTF-8 in integer"),
       )
       use num <- result.try(
         int.parse(num_str)
-        |> result.replace_error("Failed to parse integer: " <> num_str)
+        |> result.replace_error("Failed to parse integer: " <> num_str),
       )
-      
+
       let remainder = slice_remainder(rest, e_pos + 1)
       Ok(#(num, remainder))
     }
