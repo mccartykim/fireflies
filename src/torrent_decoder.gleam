@@ -4,13 +4,13 @@ import gleam/dict
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/result
 import gleam/string
 import simplifile
 
 pub fn main() {
   case simplifile.read_bits("ubuntu.torrent") {
-    Error(e) -> io.println("Error reading file: " <> simplifile.describe_error(e))
+    Error(e) ->
+      io.println("Error reading file: " <> simplifile.describe_error(e))
     Ok(content) -> {
       case bencode.decode(content) {
         Error(e) -> io.println("Error decoding torrent: " <> e)
@@ -37,7 +37,7 @@ fn print_torrent_info(torrent: Bencode) {
         }
         _ -> Nil
       }
-      
+
       // Print creation date
       case dict.get(d, "creation date") {
         Ok(BInt(timestamp)) -> {
@@ -45,7 +45,7 @@ fn print_torrent_info(torrent: Bencode) {
         }
         _ -> Nil
       }
-      
+
       // Print created by
       case dict.get(d, "created by") {
         Ok(BString(creator)) -> {
@@ -56,7 +56,7 @@ fn print_torrent_info(torrent: Bencode) {
         }
         _ -> Nil
       }
-      
+
       // Print comment if present
       case dict.get(d, "comment") {
         Ok(BString(comment)) -> {
@@ -67,9 +67,9 @@ fn print_torrent_info(torrent: Bencode) {
         }
         _ -> Nil
       }
-      
+
       io.println("")
-      
+
       // Print info dictionary details
       case dict.get(d, "info") {
         Ok(BDict(info)) -> print_info_dict(info)
@@ -82,7 +82,7 @@ fn print_torrent_info(torrent: Bencode) {
 
 fn print_info_dict(info: dict.Dict(String, Bencode)) {
   io.println("=== File Information ===")
-  
+
   // Get piece length
   case dict.get(info, "piece length") {
     Ok(BInt(piece_len)) -> {
@@ -90,7 +90,7 @@ fn print_info_dict(info: dict.Dict(String, Bencode)) {
     }
     _ -> Nil
   }
-  
+
   // Get pieces hash length
   case dict.get(info, "pieces") {
     Ok(BString(pieces)) -> {
@@ -99,14 +99,14 @@ fn print_info_dict(info: dict.Dict(String, Bencode)) {
     }
     _ -> Nil
   }
-  
+
   // Check if single file or multi-file
   case dict.get(info, "name") {
     Ok(BString(name)) -> {
       case bit_array.to_string(name) {
         Ok(name_str) -> {
           io.println("\nTorrent name: " <> name_str)
-          
+
           // Single file mode - has 'length' field
           case dict.get(info, "length") {
             Ok(BInt(length)) -> {
@@ -118,7 +118,9 @@ fn print_info_dict(info: dict.Dict(String, Bencode)) {
               case dict.get(info, "files") {
                 Ok(BList(files)) -> {
                   io.println("Mode: Multi-file")
-                  io.println("Number of files: " <> int.to_string(list.length(files)))
+                  io.println(
+                    "Number of files: " <> int.to_string(list.length(files)),
+                  )
                   io.println("\nFiles in torrent:")
                   io.println("-----------------")
                   print_files(files)
@@ -137,39 +139,41 @@ fn print_info_dict(info: dict.Dict(String, Bencode)) {
 }
 
 fn print_files(files: List(Bencode)) {
-  let _ = list.index_map(files, fn(file, index) {
-    case file {
-      BDict(f) -> {
-        io.print(int.to_string(index + 1) <> ". ")
-        
-        // Get file path
-        case dict.get(f, "path") {
-          Ok(BList(path_parts)) -> {
-            let path_str = path_parts
-              |> list.filter_map(fn(part) {
-                case part {
-                  BString(s) -> bit_array.to_string(s)
-                  _ -> Error(Nil)
-                }
-              })
-              |> string.join("/")
-            io.print(path_str)
+  let _ =
+    list.index_map(files, fn(file, index) {
+      case file {
+        BDict(f) -> {
+          io.print(int.to_string(index + 1) <> ". ")
+
+          // Get file path
+          case dict.get(f, "path") {
+            Ok(BList(path_parts)) -> {
+              let path_str =
+                path_parts
+                |> list.filter_map(fn(part) {
+                  case part {
+                    BString(s) -> bit_array.to_string(s)
+                    _ -> Error(Nil)
+                  }
+                })
+                |> string.join("/")
+              io.print(path_str)
+            }
+            _ -> io.print("<unknown path>")
           }
-          _ -> io.print("<unknown path>")
-        }
-        
-        // Get file length
-        case dict.get(f, "length") {
-          Ok(BInt(len)) -> {
-            io.println(" (" <> format_bytes(len) <> ")")
+
+          // Get file length
+          case dict.get(f, "length") {
+            Ok(BInt(len)) -> {
+              io.println(" (" <> format_bytes(len) <> ")")
+            }
+            _ -> io.println("")
           }
-          _ -> io.println("")
+          Nil
         }
-        Nil
+        _ -> Nil
       }
-      _ -> Nil
-    }
-  })
+    })
   Nil
 }
 

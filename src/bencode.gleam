@@ -1,4 +1,5 @@
 import gleam/bit_array
+import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
@@ -10,6 +11,21 @@ pub type Bencode {
   BInt(num: Int)
   BDict(dict: Dict(String, Bencode))
   BList(lst: List(Bencode))
+}
+
+pub fn info_hash(torrent: Bencode) -> Result(BitArray, String) {
+  case torrent {
+    BDict(d) -> {
+      case dict.get(d, "info") {
+        Ok(BDict(info_d)) -> {
+          let dict_bytes = encode_dict(info_d)
+          Ok(crypto.hash(crypto.Sha1, dict_bytes))
+        }
+        _ -> Error("type error")
+      }
+    }
+    _ -> Error("no info dict inside dict")
+  }
 }
 
 pub fn encode(value: Bencode) -> BitArray {
@@ -43,23 +59,20 @@ pub fn encode_list(items: List(Bencode)) -> BitArray {
 }
 
 pub fn encode_dict(d: Dict(String, Bencode)) -> BitArray {
-  let sorted_pairs = 
+  let sorted_pairs =
     dict.to_list(d)
     |> list.sort(fn(a, b) { string.compare(a.0, b.0) })
-  
-  let encoded_pairs = list.map(sorted_pairs, fn(pair) {
-    let #(key, value) = pair
-    bit_array.concat([
-      encode_string(bit_array.from_string(key)),
-      encode(value),
-    ])
-  })
-  
-  bit_array.concat([
-    <<"d":utf8>>,
-    bit_array.concat(encoded_pairs),
-    <<"e":utf8>>,
-  ])
+
+  let encoded_pairs =
+    list.map(sorted_pairs, fn(pair) {
+      let #(key, value) = pair
+      bit_array.concat([
+        encode_string(bit_array.from_string(key)),
+        encode(value),
+      ])
+    })
+
+  bit_array.concat([<<"d":utf8>>, bit_array.concat(encoded_pairs), <<"e":utf8>>])
 }
 
 pub fn decode(input: BitArray) -> Result(#(Bencode, BitArray), String) {
