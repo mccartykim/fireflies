@@ -1,10 +1,8 @@
 import gleam/bit_array
-import gleam/bytes_tree
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/result
-import gleam/set
 import gleam/string
 
 pub type Bencode {
@@ -45,7 +43,23 @@ pub fn encode_list(items: List(Bencode)) -> BitArray {
 }
 
 pub fn encode_dict(d: Dict(String, Bencode)) -> BitArray {
-  todo
+  let sorted_pairs = 
+    dict.to_list(d)
+    |> list.sort(fn(a, b) { string.compare(a.0, b.0) })
+  
+  let encoded_pairs = list.map(sorted_pairs, fn(pair) {
+    let #(key, value) = pair
+    bit_array.concat([
+      encode_string(bit_array.from_string(key)),
+      encode(value),
+    ])
+  })
+  
+  bit_array.concat([
+    <<"d":utf8>>,
+    bit_array.concat(encoded_pairs),
+    <<"e":utf8>>,
+  ])
 }
 
 pub fn decode(input: BitArray) -> Result(#(Bencode, BitArray), String) {
@@ -184,7 +198,41 @@ fn decode_list_rec(
 pub fn decode_dict(
   input: BitArray,
 ) -> Result(#(Dict(String, Bencode), BitArray), String) {
-  todo
+  case input {
+    <<"d":utf8, rest:bits>> -> {
+      dict_value_helper(rest, dict.new())
+    }
+    _ -> Error("Dict missing d")
+  }
+}
+
+fn dict_value_helper(
+  input: BitArray,
+  acc: Dict(String, Bencode),
+) -> Result(#(Dict(String, Bencode), BitArray), String) {
+  case input {
+    <<>> -> Error("No e found")
+    <<"e":utf8, rest:bits>> -> Ok(#(acc, rest))
+    _ -> {
+      case decode_string(input) {
+        Error(_) -> Error("Key decode error")
+        Ok(#(key, rest)) -> {
+          case bit_array.to_string(key) {
+            Error(_) -> Error("Key decode error")
+            Ok(key_str) -> {
+              case decode(rest) {
+                Error(_) -> Error("Value decode failed")
+                Ok(#(ben_value, rest)) -> {
+                  let new_acc = dict.insert(acc, key_str, ben_value)
+                  dict_value_helper(rest, new_acc)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 pub fn main() {
